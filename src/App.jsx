@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import PlayerList from './components/PlayerList'
 import Card from './components/Card'
 
-const defaultCards = ['0.5','1','2','3','5','8','13','20','40','100','?']
+const defaultCards = ['.25', '.5', '1', '2', '3', '5']
 
 export default function App(){
   const [players, setPlayers] = useState([])

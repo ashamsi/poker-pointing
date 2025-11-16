@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import PlayerList from './components/PlayerList'
 import Card from './components/Card'
 
-const CARDS = ['0.5','1','2','3','5','8','13','20','40','100','?']
+const CARDS = ['.25', '.5', '1', '2', '3', '5']
 
 export default function App(){
   const wsRef = useRef(null)
