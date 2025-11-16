@@ -3,13 +3,27 @@ import React from 'react'
 export default function PlayerList({ players, onVote, revealed, cards, myPlayerId }){
   if(!players || players.length === 0) return <div className="empty">No players connected yet.</div>
 
+  const handleVoteClick = (playerId, cardValue) => {
+    const comment = prompt(`Enter a note for your ${cardValue} point vote (optional):`)
+    onVote(playerId, cardValue, comment || null)
+  }
+
   return (
     <div className="player-list">
       {players.map(p => (
         <div key={p.id} className="player">
           <div className="player-info">
             <div className="player-name">{p.name}{myPlayerId === p.id ? ' (you)' : ''}</div>
-            <div className="player-vote">{revealed ? (p.vote ?? '—') : (p.vote ? 'Voted' : '—')}</div>
+            <div className="player-vote">
+              {revealed ? (
+                <div>
+                  <span>{p.vote ?? '—'}</span>
+                  {p.comment && <span className="player-comment"> ({p.comment})</span>}
+                </div>
+              ) : (
+                p.vote ? 'Voted' : '—'
+              )}
+            </div>
           </div>
 
           <div className="player-cards">
@@ -17,7 +31,7 @@ export default function PlayerList({ players, onVote, revealed, cards, myPlayerI
               <button
                 key={c}
                 className={`card small ${p.vote === c ? 'selected' : ''}`}
-                onClick={() => { if(myPlayerId === p.id) onVote(p.id, c) }}
+                onClick={() => { if(myPlayerId === p.id) handleVoteClick(p.id, c) }}
                 title={myPlayerId === p.id ? `Vote ${c}` : 'You can only vote for yourself'}
                 disabled={myPlayerId !== p.id}
               >

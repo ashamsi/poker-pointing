@@ -1,85 +1,164 @@
 const WebSocket = require('ws')
+const crypto = require('crypto')
 
 const PORT = process.env.PORT || 4000
 const wss = new WebSocket.Server({ port: PORT })
 
-const state = {
-  players: [],
-  revealed: false
+const rooms = {}
+
+function makeId(len = 6){
+  return crypto.randomBytes(Math.ceil(len/2)).toString('hex').slice(0,len)
 }
 
-function broadcast(){
-  // Send a tailored view to each connected client so votes remain private until revealed.
+function broadcastRoom(room){
   for(const client of wss.clients){
     if(client.readyState !== WebSocket.OPEN) continue
+    if(!client.roomId || client.roomId !== room.id) continue
 
-    // For each client, build a players view where:
-    // - If state.revealed is true -> include real votes
-    // - Else include the real vote only for the player's own id (client.playerId)
-    // - For other players, include a truthy placeholder if they have voted so UI can show "Voted"
-    const viewPlayers = state.players.map(p => {
-      if(state.revealed) return { id: p.id, name: p.name, vote: p.vote }
-      if(client.playerId && client.playerId === p.id) return { id: p.id, name: p.name, vote: p.vote }
+    const viewPlayers = room.players.map(p => {
+      if(room.revealed) return { id: p.id, name: p.name, vote: p.vote, comment: p.comment }
+      if(client.playerId && client.playerId === p.id) return { id: p.id, name: p.name, vote: p.vote, comment: p.comment }
       return { id: p.id, name: p.name, vote: p.vote ? '__VOTED__' : null }
     })
 
-    const msg = JSON.stringify({ type: 'state', players: viewPlayers, revealed: state.revealed })
+    const msg = JSON.stringify({ type: 'state', roomId: room.id, players: viewPlayers, revealed: room.revealed, hostPlayerId: room.hostPlayerId })
     client.send(msg)
   }
 }
 
+function findRoomById(roomId){ return rooms[roomId] }
+
 wss.on('connection', (ws) => {
-  // send initial state
-  ws.send(JSON.stringify({ type: 'state', players: state.players, revealed: state.revealed }))
+  ws.send(JSON.stringify({ type: 'ready' }))
 
   ws.on('message', (data) => {
     let msg
     try{ msg = JSON.parse(data.toString()) }catch(e){ return }
 
+    const sendError = (text) => { try{ ws.send(JSON.stringify({ type: 'error', message: text })) }catch(e){} }
+
     switch(msg.type){
+      case 'create-room': {
+        const roomId = makeId(8)
+        const playerId = makeId(10)
+        const name = msg.name || 'Host'
+        const room = { id: roomId, hostPlayerId: playerId, players: [], revealed: false, invites: [] }
+        const player = { id: playerId, name, vote: null, connected: true }
+        room.players.push(player)
+        const token = makeId(12)
+        room.invites.push(token)
+        rooms[roomId] = room
+
+        ws.roomId = roomId
+        ws.playerId = playerId
+        ws.send(JSON.stringify({ type: 'room-created', roomId, playerId, inviteToken: token, url: `/room/${roomId}` }))
+        broadcastRoom(room)
+        break
+      }
+
+      case 'create-invite': {
+        const { roomId } = msg
+        const room = findRoomById(roomId)
+        if(!room) { sendError('room not found'); break }
+        if(ws.playerId !== room.hostPlayerId){ sendError('only host may create invites'); break }
+        const token = makeId(12)
+        room.invites.push(token)
+        ws.send(JSON.stringify({ type: 'invite-created', roomId, token, url: `/room/${roomId}?invite=${token}` }))
+        break
+      }
+
       case 'join': {
-        const id = Date.now() + Math.random()
-        const player = { id, name: msg.name || 'Anonymous', vote: null }
-        state.players.push(player)
+        const { roomId, name, inviteToken } = msg
+        const room = findRoomById(roomId)
+        if(!room){ sendError('room not found'); break }
+
+        if(room.invites && room.invites.length > 0){
+          if(!inviteToken || !room.invites.includes(inviteToken)){
+            sendError('invite token required or invalid')
+            break
+          }
+        }
+
+        const id = makeId(10)
+        const player = { id, name: name || 'Anonymous', vote: null, connected: true }
+        room.players.push(player)
         ws.playerId = id
-        // inform the joining client of their assigned id
-        ws.send(JSON.stringify({ type: 'joined', playerId: id }))
-        broadcast()
+        ws.roomId = roomId
+
+        ws.send(JSON.stringify({ type: 'joined', playerId: id, role: (id === room.hostPlayerId ? 'host' : 'participant'), roomId }))
+        broadcastRoom(room)
         break
       }
+
       case 'vote': {
-        const p = state.players.find(x => x.id === msg.playerId)
-        if(p) p.vote = msg.vote
-        broadcast()
+        const { roomId, playerId, vote, comment } = msg
+        const room = findRoomById(roomId)
+        if(!room){ sendError('room not found'); break }
+        if(ws.playerId !== playerId){ sendError('you can only vote for yourself'); break }
+        const p = room.players.find(x => x.id === playerId)
+        if(p){ 
+          p.vote = vote
+          p.comment = comment || null
+        }
+        broadcastRoom(room)
         break
       }
+
       case 'reveal': {
-        state.revealed = true
-        broadcast()
+        const { roomId } = msg
+        const room = findRoomById(roomId)
+        if(!room){ sendError('room not found'); break }
+        if(ws.playerId !== room.hostPlayerId){ sendError('only host can reveal'); break }
+        room.revealed = true
+        broadcastRoom(room)
         break
       }
+
       case 'reset': {
-        state.players = state.players.map(p => ({ ...p, vote: null }))
-        state.revealed = false
-        broadcast()
+        const { roomId } = msg
+        const room = findRoomById(roomId)
+        if(!room){ sendError('room not found'); break }
+        if(ws.playerId !== room.hostPlayerId){ sendError('only host can reset'); break }
+        room.players = room.players.map(p => ({ ...p, vote: null, comment: null }))
+        room.revealed = false
+        broadcastRoom(room)
         break
       }
+
       case 'clearPlayers': {
-        state.players = []
-        state.revealed = false
-        broadcast()
+        const { roomId } = msg
+        const room = findRoomById(roomId)
+        if(!room){ sendError('room not found'); break }
+        if(ws.playerId !== room.hostPlayerId){ sendError('only host can clear players'); break }
+        room.players = []
+        room.revealed = false
+        broadcastRoom(room)
         break
       }
+
       default:
-        // ignore
+        // unknown message
     }
   })
 
   ws.on('close', () => {
-    if(ws.playerId){
-      state.players = state.players.filter(p => p.id !== ws.playerId)
-      broadcast()
+    const { roomId, playerId } = ws
+    if(!roomId || !playerId) return
+    const room = findRoomById(roomId)
+    if(!room) return
+
+    room.players = room.players.filter(p => p.id !== playerId)
+
+    if(room.hostPlayerId === playerId){
+      if(room.players.length > 0){
+        room.hostPlayerId = room.players[0].id
+      } else {
+        delete rooms[roomId]
+        return
+      }
     }
+
+    broadcastRoom(room)
   })
 })
 

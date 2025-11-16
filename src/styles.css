@@ -22,10 +22,20 @@ header h1{margin:0 0 6px;font-size:20px}
 .player-info{display:flex;gap:12px;align-items:center}
 .player-name{font-weight:600}
 .player-vote{color:var(--muted)}
+.player-comment{color:var(--accent);font-size:12px;font-style:italic}
 .player-cards{display:flex;gap:6px;flex-wrap:wrap}
 .card.selected{outline:2px solid var(--selected)}
 .footer{margin-top:16px;color:var(--muted);font-size:13px}
 .empty{color:var(--muted);padding:12px}
+
+/* Invite modal */
+.invite-modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,0.6);display:flex;align-items:center;justify-content:center;z-index:200}
+.invite-modal{background:var(--card);padding:18px;border-radius:10px;min-width:320px;max-width:640px;border:1px solid rgba(255,255,255,0.04)}
+.invite-modal h3{margin:0 0 8px}
+.invite-row{display:flex;gap:8px;align-items:center;margin-top:8px}
+.invite-row label{width:48px;color:var(--muted);font-size:13px}
+.invite-row input{flex:1;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.04);background:#071018;color:inherit}
+.invite-row button{padding:8px 10px;border-radius:6px;border:0;background:var(--accent);color:#042033;cursor:pointer}
 :root{
   --bg: #0f1724;
   --card: #1f2937;
