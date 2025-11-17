@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import PlayerList from './components/PlayerList'
 import Card from './components/Card'
 import InviteModal from './components/InviteModal'
+import TicketSearchModal from './components/TicketSearchModal'
 
 const CARDS = ['.25', '.5', '1', '2', '3', '5']
 
@@ -9,6 +10,8 @@ export default function App(){
   const wsRef = useRef(null)
   const [connected, setConnected] = useState(false)
   const [players, setPlayers] = useState([])
+  const [selectedTicket, setSelectedTicket] = useState(null)
+  const [ticketSearchOpen, setTicketSearchOpen] = useState(false)
   const [revealed, setRevealed] = useState(false)
   const [name, setName] = useState('')
   const [myPlayerId, setMyPlayerId] = useState(null)
@@ -135,9 +138,18 @@ export default function App(){
           </>
         ) : (
           <>
-            <div>Room: {roomId} — Role: {role}</div>
+            <div style={{marginBottom: 12}}>
+              <div>Room: {roomId} — Role: {role}</div>
+              {selectedTicket && (
+                <div style={{marginTop: 8, padding: '8px 12px', background: 'rgba(96, 165, 250, 0.1)', borderRadius: 6, borderLeft: '3px solid var(--accent)'}}>
+                  <strong>{selectedTicket.key}</strong>: {selectedTicket.summary}
+                  {selectedTicket.storyPoints && <span> ({selectedTicket.storyPoints} pts)</span>}
+                </div>
+              )}
+            </div>
             {role === 'host' ? (
-              <div style={{display:'flex',gap:8}}>
+              <div style={{display:'flex',gap:8, flexWrap:'wrap'}}>
+                <button onClick={() => setTicketSearchOpen(true)}>Search JIRA</button>
                 <button onClick={createInvite}>Create invite</button>
                 <button onClick={reveal} disabled={revealed}>Reveal</button>
                 <button onClick={reset}>Reset votes</button>
@@ -158,6 +170,8 @@ export default function App(){
   <PlayerList players={players} onVote={onVote} revealed={revealed} cards={CARDS} myPlayerId={myPlayerId} />
 
   <InviteModal open={inviteModalOpen} token={inviteTokenState} url={inviteUrlState} onClose={()=>{ setInviteModalOpen(false); setInviteTokenState(null); setInviteUrlState(null) }} />
+  
+  <TicketSearchModal open={ticketSearchOpen} onClose={()=>setTicketSearchOpen(false)} onSelectTicket={setSelectedTicket} />
 
       <footer className="footer">This demo uses a simple WebSocket server on port 4000 to broadcast state to all connected clients.</footer>
     </div>
