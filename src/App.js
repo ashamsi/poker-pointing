@@ -43,6 +43,7 @@ export default function App(){
         if(msg.type === 'state'){
           setPlayers(msg.players || [])
           setRevealed(!!msg.revealed)
+          setSelectedTicket(msg.selectedTicket || null)
         } else if(msg.type === 'joined'){
           // store the assigned player id so the client can vote for self only
           setMyPlayerId(msg.playerId)
@@ -117,6 +118,10 @@ export default function App(){
   const reveal = () => { if(roomId) send({ type: 'reveal', roomId }) }
   const reset = () => { if(roomId) send({ type: 'reset', roomId }) }
   const clearPlayers = () => { if(roomId) send({ type: 'clearPlayers', roomId }) }
+  const selectTicket = (ticket) => { 
+    setSelectedTicket(ticket)
+    if(roomId) send({ type: 'select-ticket', roomId, ticket })
+  }
 
   return (
     <div className="app">
@@ -144,6 +149,21 @@ export default function App(){
                 <div style={{marginTop: 8, padding: '8px 12px', background: 'rgba(96, 165, 250, 0.1)', borderRadius: 6, borderLeft: '3px solid var(--accent)'}}>
                   <strong>{selectedTicket.key}</strong>: {selectedTicket.summary}
                   {selectedTicket.storyPoints && <span> ({selectedTicket.storyPoints} pts)</span>}
+                  {selectedTicket.description && (
+                    <div className="ticket-description" style={{marginTop: 8}} dangerouslySetInnerHTML={{__html: selectedTicket.description}}>
+                    </div>
+                  )}
+                  {selectedTicket.comments && selectedTicket.comments.length > 0 && (
+                    <div style={{marginTop:8, fontSize:13, color:'#cbd5e1'}}>
+                      <div style={{fontWeight:700, fontSize:12, color:'#94a3b8', marginBottom:6}}>Recent comments {selectedTicket.comments.length > 3 && <a href={selectedTicket.url} target="_blank" rel="noreferrer" style={{fontWeight:400, color:'var(--accent)', textDecoration:'none'}}>· View all ({selectedTicket.comments.length})</a>}</div>
+                      {selectedTicket.comments.slice(0,3).map(c => (
+                        <div key={c.id} style={{marginBottom:6, paddingLeft:6, borderLeft:'2px solid rgba(255,255,255,0.03)'}}>
+                          <div style={{fontSize:12, fontWeight:600, color:'#e6eef8'}}>{c.author} <span style={{fontWeight:400, color:'#94a3b8', fontSize:11}}>· {new Date(c.created).toLocaleString()}</span></div>
+                          <div style={{fontSize:13, color:'#cbd5e1', lineHeight:1.4, maxHeight: 48, overflow:'hidden', textOverflow:'ellipsis', display:'-webkit-box', WebkitLineClamp:3, WebkitBoxOrient:'vertical'}} dangerouslySetInnerHTML={{__html: c.body}}></div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -171,7 +191,7 @@ export default function App(){
 
   <InviteModal open={inviteModalOpen} token={inviteTokenState} url={inviteUrlState} onClose={()=>{ setInviteModalOpen(false); setInviteTokenState(null); setInviteUrlState(null) }} />
   
-  <TicketSearchModal open={ticketSearchOpen} onClose={()=>setTicketSearchOpen(false)} onSelectTicket={setSelectedTicket} />
+  <TicketSearchModal open={ticketSearchOpen} onClose={()=>setTicketSearchOpen(false)} onSelectTicket={selectTicket} />
 
       <footer className="footer">This demo uses a simple WebSocket server on port 4000 to broadcast state to all connected clients.</footer>
     </div>

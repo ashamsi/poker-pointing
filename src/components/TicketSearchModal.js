@@ -129,6 +129,9 @@ export default function TicketSearchModal({ open, onClose, onSelectTicket }){
                   <div className="ticket-key">{ticket.key}</div>
                   <div>
                     <div className="ticket-summary">{ticket.summary}</div>
+                    {ticket.description && (
+                      <div className="ticket-description">{ticket.description}</div>
+                    )}
                     {ticket.storyPoints !== null && (
                       <div className="ticket-points">Story Points: {ticket.storyPoints}</div>
                     )}

@@ -44,7 +44,20 @@ header h1{margin:0 0 6px;font-size:20px}
 .ticket-item:hover{background:rgba(255,255,255,0.04);border-left-color:var(--accent)}
 .ticket-key{font-weight:600;font-size:13px;color:var(--accent)}
 .ticket-summary{margin-top:2px;font-size:14px}
+.ticket-description{margin-top:6px;font-size:13px;color:var(--muted);line-height:1.5}
+.ticket-description p{margin:6px 0;display:block}
+.ticket-description h1,.ticket-description h2,.ticket-description h3,.ticket-description h4,.ticket-description h5,.ticket-description h6{margin:6px 0 4px;font-size:13px;font-weight:600;color:#e6eef8}
+.ticket-description ul,.ticket-description ol{margin:4px 0 4px 16px;padding:0}
+.ticket-description li{margin:2px 0}
+.ticket-description code{background:rgba(255,255,255,0.04);padding:2px 4px;border-radius:3px;font-size:12px;font-family:monospace}
+.ticket-description pre{background:rgba(255,255,255,0.04);padding:8px;border-radius:4px;overflow-x:auto;margin:4px 0;font-size:12px}
+.ticket-description blockquote{margin:4px 0;padding-left:8px;border-left:2px solid var(--accent);color:#cbd5e1}
 .ticket-points{margin-top:4px;font-size:12px;color:var(--muted)}
+.ticket-header-comments{margin-top:8px}
+.ticket-comment{margin-bottom:8px;padding-left:6px;border-left:2px solid rgba(255,255,255,0.03)}
+.ticket-comment .author{font-size:12px;font-weight:600;color:#e6eef8}
+.ticket-comment .when{font-size:11px;color:var(--muted);font-weight:400;margin-left:6px}
+.ticket-comment .body{font-size:13px;color:#cbd5e1;line-height:1.4}
 
 /* Invite modal */
 .invite-modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,0.6);display:flex;align-items:center;justify-content:center;z-index:200}

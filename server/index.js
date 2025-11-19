@@ -3,6 +3,7 @@ const WebSocket = require('ws')
 const crypto = require('crypto')
 const axios = require('axios')
 const http = require('http')
+const sanitizeHtml = require('sanitize-html')
 
 const app = express()
 app.use(express.json())
@@ -37,7 +38,7 @@ function broadcastRoom(room){
       return { id: p.id, name: p.name, vote: p.vote ? '__VOTED__' : null }
     })
 
-    const msg = JSON.stringify({ type: 'state', roomId: room.id, players: viewPlayers, revealed: room.revealed, hostPlayerId: room.hostPlayerId })
+    const msg = JSON.stringify({ type: 'state', roomId: room.id, players: viewPlayers, revealed: room.revealed, hostPlayerId: room.hostPlayerId, selectedTicket: room.selectedTicket })
     client.send(msg)
   }
 }
@@ -83,7 +84,8 @@ app.post('/api/jira/search', async (req, res) => {
     const jql = `text ~ "${query}" OR key ~ "${query}"`
     const response = await axios.post(jiraUrl, {
       jql,
-      fields: ['key', 'summary', 'customfield_10016'],
+      // request description and comments so client can show details without extra requests
+      fields: ['key', 'summary', 'description', 'customfield_10016', 'comment'],
       maxResults: 10
     }, {
       headers: {
@@ -94,11 +96,119 @@ app.post('/api/jira/search', async (req, res) => {
     })
 
     const issues = response?.data?.issues || []
+    
+    // Convert Atlassian Document Format (ADF) to HTML, preserving structure
+    function adfToHtml(node, depth = 0) {
+      if (!node) return ''
+      if (typeof node === 'string') return node
+      if (Array.isArray(node)) return node.map(n => adfToHtml(n, depth)).join('')
+
+      const { type, content = [], text, marks = [], attrs = {} } = node
+
+      // Text nodes with marks
+      if (type === 'text') {
+        let textContent = text || ''
+        // Apply marks in order (create nesting)
+        for (const mark of (marks || []).slice().reverse()) {
+          if (mark.type === 'strong') textContent = `<strong>${textContent}</strong>`
+          else if (mark.type === 'em') textContent = `<em>${textContent}</em>`
+          else if (mark.type === 'underline' || mark.type === 'u') textContent = `<u>${textContent}</u>`
+          else if (mark.type === 'code') textContent = `<code>${textContent}</code>`
+          else if (mark.type === 'link') {
+            const href = mark.attrs?.href || '#'
+            const target = href.startsWith('http') ? ' target="_blank" rel="noopener noreferrer"' : ''
+            textContent = `<a href="${href}"${target}>${textContent}</a>`
+          } else if (mark.type === 'strikethrough') textContent = `<s>${textContent}</s>`
+        }
+        return textContent
+      }
+
+      // Block elements
+      switch (type) {
+        case 'paragraph':
+          return `<p>${content.map(n => adfToHtml(n, depth + 1)).join('')}</p>`
+        case 'heading': {
+          const level = attrs.level || 1
+          const tag = `h${Math.min(level, 6)}`
+          return `<${tag}>${content.map(n => adfToHtml(n, depth + 1)).join('')}</${tag}>`
+        }
+        case 'bulletList':
+          return `<ul>${content.map(n => adfToHtml(n, depth + 1)).join('')}</ul>`
+        case 'orderedList':
+          return `<ol>${content.map(n => adfToHtml(n, depth + 1)).join('')}</ol>`
+        case 'listItem':
+          return `<li>${content.map(n => adfToHtml(n, depth + 1)).join('')}</li>`
+        case 'codeBlock':
+          return `<pre><code>${content.map(n => adfToHtml(n, depth + 1)).join('')}</code></pre>`
+        case 'blockquote':
+          return `<blockquote>${content.map(n => adfToHtml(n, depth + 1)).join('')}</blockquote>`
+        case 'hardBreak':
+          return '<br />'
+        case 'rule':
+          return '<hr />'
+        case 'panel': {
+          const panelType = attrs.panelType || 'info'
+          return `<div class="adf-panel adf-panel-${panelType}">${content.map(n => adfToHtml(n, depth + 1)).join('')}</div>`
+        }
+        case 'emoji':
+          return attrs && attrs.text ? attrs.text : ''
+        case 'mention': {
+          const display = attrs.text || attrs.id || 'mention'
+          return `<span class="adf-mention">${display}</span>`
+        }
+        case 'mediaSingle': {
+          // mediaSingle may contain a media node with attrs { url }
+          const mediaNode = content && content[0]
+          const url = mediaNode?.attrs?.url || mediaNode?.attrs?.src || attrs?.url
+          if (url) return `<div class="adf-media"><img src="${url}" alt="media"/></div>`
+          return ''
+        }
+        case 'media': {
+          const url = attrs?.url || attrs?.src
+          if (url) return `<img src="${url}" alt="media" />`
+          return ''
+        }
+        case 'table':
+          return `<table class="adf-table">${content.map(n => adfToHtml(n, depth + 1)).join('')}</table>`
+        case 'tableRow':
+          return `<tr>${content.map(n => adfToHtml(n, depth + 1)).join('')}</tr>`
+        case 'tableHeader':
+        case 'tableCell':
+          return `<td>${content.map(n => adfToHtml(n, depth + 1)).join('')}</td>`
+        default:
+          // Inline or unknown: render its children
+          return content.map(n => adfToHtml(n, depth + 1)).join('')
+      }
+    }
+
+    // sanitize HTML from JIRA comment bodies and descriptions (allow basic formatting tags)
+    function sanitizeContent(html) {
+      if (!html) return ''
+      return sanitizeHtml(html, {
+        allowedTags: ['b', 'i', 'u', 'strong', 'em', 'code', 'pre', 'br', 'p', 'ul', 'ol', 'li', 'a', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote'],
+          allowedAttributes: {
+            a: ['href', 'target', 'rel', 'title'],
+            img: ['src', 'alt', 'title'],
+            div: ['class'],
+            span: ['class']
+          },
+          // allow data- attributes sometimes used by JIRA
+          allowedAttributesPattern: /^data-[0-9a-z\-]+$/i
+      })
+    }
+
     const tickets = issues.map(issue => ({
       key: issue.key,
       summary: issue.fields?.summary || '(no summary)',
+      description: issue.fields?.description ? sanitizeContent(adfToHtml(issue.fields.description)) : null,
       storyPoints: issue.fields?.customfield_10016 ?? null,
-      url: `https://${domain}/browse/${issue.key}`
+      comments: (issue.fields?.comment?.comments || []).map(c => ({ 
+        id: c.id, 
+        author: c.author?.displayName || c.author?.name || 'unknown', 
+        body: sanitizeContent(adfToHtml(c.body)),
+        created: c.created 
+      })),
+      url: `${baseUrl}/browse/${issue.key}`
     }))
 
     return res.json({ tickets })
@@ -128,7 +238,7 @@ wss.on('connection', (ws) => {
         const roomId = makeId(8)
         const playerId = makeId(10)
         const name = msg.name || 'Host'
-        const room = { id: roomId, hostPlayerId: playerId, players: [], revealed: false, invites: [] }
+        const room = { id: roomId, hostPlayerId: playerId, players: [], revealed: false, invites: [], selectedTicket: null }
         const player = { id: playerId, name, vote: null, connected: true }
         room.players.push(player)
         const token = makeId(12)
@@ -218,6 +328,16 @@ wss.on('connection', (ws) => {
         if(ws.playerId !== room.hostPlayerId){ sendError('only host can clear players'); break }
         room.players = []
         room.revealed = false
+        broadcastRoom(room)
+        break
+      }
+
+      case 'select-ticket': {
+        const { roomId, ticket } = msg
+        const room = findRoomById(roomId)
+        if(!room){ sendError('room not found'); break }
+        if(ws.playerId !== room.hostPlayerId){ sendError('only host can select ticket'); break }
+        room.selectedTicket = ticket
         broadcastRoom(room)
         break
       }
